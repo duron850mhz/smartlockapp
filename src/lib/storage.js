@@ -2,6 +2,7 @@ const KEYS = {
   locks: "smartlock:locks",
   apiKey: "smartlock:apiKey",
   statusCache: "smartlock:statusCache",
+  autoRefreshOnStart: "smartlock:autoRefreshOnStart",
 };
 
 function safeParse(json, fallback) {
@@ -43,4 +44,12 @@ export function updateStatusCacheEntry(lockId, entry) {
   cache[lockId] = entry;
   saveStatusCache(cache);
   return cache;
+}
+
+export function loadAutoRefreshOnStart() {
+  return localStorage.getItem(KEYS.autoRefreshOnStart) === "true";
+}
+
+export function saveAutoRefreshOnStart(value) {
+  localStorage.setItem(KEYS.autoRefreshOnStart, value ? "true" : "false");
 }

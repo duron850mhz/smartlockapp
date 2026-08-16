@@ -26,6 +26,8 @@ import {
   saveApiKey,
   loadStatusCache,
   updateStatusCacheEntry,
+  loadAutoRefreshOnStart,
+  saveAutoRefreshOnStart,
 } from "./lib/storage.js";
 
 // ---- 表示ヘルパー ----
@@ -193,7 +195,17 @@ function LockCard({ lock, canOperate, onToggle }) {
   );
 }
 
-function SettingsView({ locks, apiKey, onSaveApiKey, onBack, onEdit, onDelete, onAdd }) {
+function SettingsView({
+  locks,
+  apiKey,
+  onSaveApiKey,
+  autoRefreshOnStart,
+  onToggleAutoRefreshOnStart,
+  onBack,
+  onEdit,
+  onDelete,
+  onAdd,
+}) {
   const [showApi, setShowApi] = useState(false);
   const [apiDraft, setApiDraft] = useState(apiKey);
 
@@ -230,6 +242,21 @@ function SettingsView({ locks, apiKey, onSaveApiKey, onBack, onEdit, onDelete, o
             </button>
           </div>
         </div>
+
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoRefreshOnStart}
+            onChange={(e) => onToggleAutoRefreshOnStart(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+          />
+          <span className="text-sm text-gray-700">
+            起動時に自動でステータスを更新する
+            <span className="block text-[11px] text-gray-400 mt-0.5">
+              OFFの場合、起動時は前回取得した状態を表示するだけでAPIは呼びません（手動更新ボタンのみ）。ONにすると起動のたびにロック台数分APIを呼ぶため、無料枠の消費が早くなります。
+            </span>
+          </span>
+        </label>
 
         <div className="border-t border-gray-100 pt-4">
           <p className="text-xs font-medium text-gray-500 mb-2">ロック一覧</p>
@@ -364,6 +391,7 @@ export default function App() {
   const [editingLock, setEditingLock] = useState(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [autoRefreshOnStart, setAutoRefreshOnStart] = useState(false);
   const timers = useRef({});
 
   // 初回マウント時にlocalStorageから復元。ここではAPIは一切叩かない。
@@ -373,6 +401,7 @@ export default function App() {
     const cache = loadStatusCache();
     setLocks(storedLocks.map((l) => mergeLockWithCache(l, cache)));
     setApiKey(storedApiKey);
+    setAutoRefreshOnStart(loadAutoRefreshOnStart());
     setLoaded(true);
   }, []);
 
@@ -412,12 +441,21 @@ export default function App() {
     [apiKey]
   );
 
-  const handleRefreshAll = async () => {
+  const handleRefreshAll = useCallback(async () => {
     if (!apiKey || locks.length === 0) return;
     setRefreshingAll(true);
     await Promise.all(locks.map((l) => refreshLock(l)));
     setRefreshingAll(false);
-  };
+  }, [apiKey, locks, refreshLock]);
+
+  // 「起動時に更新する」がONの場合のみ、初回ロード直後に1回だけ全ロックのステータスを取得する
+  useEffect(() => {
+    if (!loaded) return;
+    if (autoRefreshOnStart && apiKey && locks.length > 0) {
+      handleRefreshAll();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   const handleToggle = async (lock, cmd, targetStatus) => {
     if (!apiKey || !lock.secretKey) return;
@@ -515,6 +553,11 @@ export default function App() {
             onSaveApiKey={(key) => {
               setApiKey(key);
               saveApiKey(key);
+            }}
+            autoRefreshOnStart={autoRefreshOnStart}
+            onToggleAutoRefreshOnStart={(value) => {
+              setAutoRefreshOnStart(value);
+              saveAutoRefreshOnStart(value);
             }}
             onBack={() => setView("list")}
             onEdit={(lock) => {
